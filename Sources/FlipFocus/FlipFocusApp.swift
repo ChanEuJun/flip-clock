@@ -1,0 +1,39 @@
+import SwiftUI
+
+@main
+struct FlipFocusApp: App {
+    @StateObject private var state = AppState()
+
+    var body: some Scene {
+        Window("FlipFocus", id: "main") {
+            ContentView()
+                .environmentObject(state)
+                .environmentObject(state.store)
+                .frame(minWidth: 260, minHeight: 480)
+                .preferredColorScheme(.dark)
+        }
+        .windowStyle(.hiddenTitleBar)
+        .defaultSize(width: 430, height: 940)
+        .commands {
+            CommandMenu("Focus") {
+                Button("Clock") { state.mode = .clock }.keyboardShortcut("1")
+                Button("Timer") { state.mode = .timer }.keyboardShortcut("2")
+                Button("Stats") { state.mode = .stats }.keyboardShortcut("3")
+                Divider()
+                Button(state.phase == .running ? "Pause Timer" : "Start Timer") { state.toggle() }
+                    .keyboardShortcut(.return)
+                Button("Stop Timer") { state.cancel() }
+                    .keyboardShortcut(".")
+                    .disabled(state.phase == .idle)
+                Button("Add 5 Minutes") { state.adjust(by: 5) }.keyboardShortcut(.upArrow)
+                Button("Remove 5 Minutes") { state.adjust(by: -5) }.keyboardShortcut(.downArrow)
+                Divider()
+                Toggle("Keep on Top", isOn: $state.keepOnTop).keyboardShortcut("t", modifiers: [.command, .shift])
+                Button("Snap to Right Quarter") { state.snap(right: true) }
+                    .keyboardShortcut(.rightArrow, modifiers: [.command, .option])
+                Button("Snap to Left Quarter") { state.snap(right: false) }
+                    .keyboardShortcut(.leftArrow, modifiers: [.command, .option])
+            }
+        }
+    }
+}

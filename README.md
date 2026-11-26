@@ -1,11 +1,4 @@
 # flip-clock
-
-**FlipFocus** — a minimal, native macOS flip-style clock and focus timer, built to sit in a tall strip beside your work on a second screen.
-
-- **Clock** — hours, minutes and seconds as split-flap style tiles, stacked vertically (or in one row when the window is wide enough).
-- **Timer** — click a row and type to set it; tracks focus sessions for the day.
-- **Stats** — a GitHub-style heatmap of daily focus minutes, plus today's sessions and your streak.
-
 Native SwiftUI, no web runtime: ~35 MB memory and ~1% CPU while running.
 
 ## Build & run

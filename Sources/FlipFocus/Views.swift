@@ -10,7 +10,7 @@ struct ContentView: View {
 
     var body: some View {
         ZStack {
-            bg.ignoresSafeArea()
+            bg.ignoresSafeArea().onTapGesture { state.commitEdit() }
             VStack(spacing: 0) {
                 Group {
                     switch state.mode {
@@ -30,40 +30,41 @@ struct ContentView: View {
     }
 }
 
-// MARK: - Shared tile grid (two rows of two digits, stacked vertically)
+// MARK: - Shared tile grid: HH / MM / SS stacked, filling the window height
 
 struct TileGrid: View {
-    let top: String, bottom: String
-    let topLabel: String, bottomLabel: String
+    let rows: [String]                 // ["HH", "MM", "SS"]
+    var editing: Field? = nil
+    var onTap: ((Field) -> Void)? = nil
 
     var body: some View {
         GeometryReader { geo in
-            let gap = geo.size.width * 0.04
-            let labelH: CGFloat = 26
-            let byWidth = (geo.size.width - gap) / 2
-            let byHeight = (geo.size.height - 2 * labelH - gap * 2) / 2 / 1.02
-            let tileW = max(10, min(byWidth, byHeight))
-            let tileH = tileW * 1.02
+            let gap = max(8, geo.size.width * 0.035)
+            let tileW = max(10, (geo.size.width - gap) / 2)
+            let tileH = max(10, min((geo.size.height - gap * 2) / 3, tileW * 1.7))
             VStack(spacing: gap) {
-                row(top, topLabel, tileW, tileH, gap, labelH)
-                row(bottom, bottomLabel, tileW, tileH, gap, labelH)
+                ForEach(Field.allCases, id: \.self) { f in
+                    row(rows[f.rawValue], field: f, w: tileW, h: tileH, gap: gap)
+                }
             }
             .frame(width: geo.size.width, height: geo.size.height)
         }
     }
 
-    private func row(_ digits: String, _ label: String, _ w: CGFloat, _ h: CGFloat, _ gap: CGFloat, _ labelH: CGFloat) -> some View {
-        VStack(spacing: 0) {
-            HStack(spacing: gap) {
-                ForEach(Array(digits.enumerated()), id: \.offset) { _, ch in
-                    FlipDigit(String(ch)).frame(width: w, height: h)
-                }
+    private func row(_ digits: String, field: Field, w: CGFloat, h: CGFloat, gap: CGFloat) -> some View {
+        HStack(spacing: gap) {
+            ForEach(Array(digits.enumerated()), id: \.offset) { _, ch in
+                FlipDigit(String(ch)).frame(width: w, height: h)
             }
-            Text(label)
-                .font(.system(size: 13, weight: .semibold))
-                .foregroundStyle(labelGray)
-                .frame(height: labelH)
         }
+        .overlay(
+            RoundedRectangle(cornerRadius: w * 0.12, style: .continuous)
+                .stroke(accent, lineWidth: 2)
+                .padding(-4)
+                .opacity(editing == field ? 1 : 0)
+        )
+        .contentShape(Rectangle())
+        .onTapGesture { onTap?(field) }
     }
 }
 
@@ -75,7 +76,7 @@ struct ClockView: View {
 
     var body: some View {
         VStack(spacing: 10) {
-            TileGrid(top: state.hh, bottom: state.mm, topLabel: "Hours", bottomLabel: "Minutes")
+            TileGrid(rows: state.clock) { state.beginEdit($0) }
             TodaySummary(total: store.total(for: Date()))
         }
     }
@@ -105,10 +106,8 @@ struct TimerView: View {
     @EnvironmentObject var store: SessionStore
 
     var body: some View {
-        let r = state.remaining
-        VStack(spacing: 14) {
-            TileGrid(top: String(format: "%02d", r / 60), bottom: String(format: "%02d", r % 60),
-                     topLabel: "Minutes", bottomLabel: "Seconds")
+        VStack(spacing: 12) {
+            TileGrid(rows: state.timerDigits, editing: state.editing) { state.beginEdit($0) }
             controls
             TodaySummary(total: store.total(for: Date()))
         }
@@ -118,9 +117,7 @@ struct TimerView: View {
         HStack(spacing: 10) {
             switch state.phase {
             case .idle:
-                PillButton(title: "−5") { state.adjust(by: -5) }
                 PillButton(title: "Start", prominent: true) { state.toggle() }
-                PillButton(title: "+5") { state.adjust(by: 5) }
             case .running, .paused:
                 PillButton(title: state.phase == .running ? "Pause" : "Resume", prominent: true) { state.toggle() }
                 PillButton(title: "Stop") { state.cancel() }

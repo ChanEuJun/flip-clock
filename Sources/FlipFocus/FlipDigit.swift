@@ -84,7 +84,7 @@ private struct CardFace: View {
             RoundedRectangle(cornerRadius: size.width * 0.1, style: .continuous)
                 .fill(Color(white: shadeLower ? 0.155 : 0.17))
             Text(text)
-                .font(.system(size: size.height * 0.66, weight: .bold).width(.compressed))
+                .font(.system(size: min(size.height * 0.84, size.width * 1.3), weight: .bold).width(.compressed))
                 .foregroundStyle(
                     shadeLower
                         ? AnyShapeStyle(LinearGradient(colors: [Color(white: 0.82), .white],

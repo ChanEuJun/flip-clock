@@ -25,8 +25,6 @@ struct FlipFocusApp: App {
                 Button("Stop Timer") { state.cancel() }
                     .keyboardShortcut(".")
                     .disabled(state.phase == .idle)
-                Button("Add 5 Minutes") { state.adjust(by: 5) }.keyboardShortcut(.upArrow)
-                Button("Remove 5 Minutes") { state.adjust(by: -5) }.keyboardShortcut(.downArrow)
                 Divider()
                 Toggle("Keep on Top", isOn: $state.keepOnTop).keyboardShortcut("t", modifiers: [.command, .shift])
                 Button("Snap to Right Quarter") { state.snap(right: true) }

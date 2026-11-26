@@ -14,19 +14,26 @@ enum Mode: Int, CaseIterable {
 
 enum Phase { case idle, running, paused }
 
+/// Which row of the timer is being typed into.
+enum Field: Int, CaseIterable { case hours, minutes, seconds }
+
 @MainActor
 final class AppState: ObservableObject {
-    @Published var mode: Mode = .clock
-    @Published private(set) var hh = "00"
-    @Published private(set) var mm = "00"
+    @Published var mode: Mode = .clock {
+        didSet { if mode != .timer { commitEdit() } }
+    }
+    /// Wall clock as ["HH", "MM", "SS"]; each entry only republished when it changes.
+    @Published private(set) var clock = ["00", "00", "00"]
     @Published private(set) var remaining: Int
     @Published private(set) var phase: Phase = .idle
-    @Published var presetMinutes: Int {
+    @Published private(set) var presetSeconds: Int {
         didSet {
-            UserDefaults.standard.set(presetMinutes, forKey: "presetMinutes")
-            if phase == .idle { remaining = presetMinutes * 60 }
+            UserDefaults.standard.set(presetSeconds, forKey: "presetSeconds")
+            if phase == .idle { remaining = presetSeconds }
         }
     }
+    @Published private(set) var editing: Field?
+    @Published private(set) var buffer = ""
     @Published var keepOnTop = false {
         didSet { NSApp.windows.forEach { $0.level = keepOnTop ? .floating : .normal } }
     }
@@ -36,14 +43,18 @@ final class AppState: ObservableObject {
     private var plannedSeconds = 0
     private var sessionStart = Date()
     private var ticker: Timer?
+    private var keyMonitor: Any?
 
     init() {
-        let saved = UserDefaults.standard.integer(forKey: "presetMinutes")
-        let preset = saved > 0 ? saved : 25
-        presetMinutes = preset
-        remaining = preset * 60
+        let d = UserDefaults.standard
+        var preset = d.integer(forKey: "presetSeconds")
+        if preset <= 0 { preset = d.integer(forKey: "presetMinutes") * 60 }  // migrate v0.1 setting
+        if preset <= 0 { preset = 25 * 60 }
+        presetSeconds = preset
+        remaining = preset
         updateClock()
         startTicker()
+        installKeyMonitor()
     }
 
     // MARK: Ticking — one 1 Hz timer aligned to the second, with tolerance so macOS can coalesce wakeups.
@@ -53,7 +64,7 @@ final class AppState: ObservableObject {
         let t = Timer(fire: next, interval: 1, repeats: true) { [weak self] _ in
             MainActor.assumeIsolated { self?.tick() }
         }
-        t.tolerance = 0.15
+        t.tolerance = 0.1
         RunLoop.main.add(t, forMode: .common)
         ticker = t
     }
@@ -67,18 +78,30 @@ final class AppState: ObservableObject {
     }
 
     private func updateClock() {
-        let c = Calendar.current.dateComponents([.hour, .minute], from: Date())
-        let h = String(format: "%02d", c.hour ?? 0), m = String(format: "%02d", c.minute ?? 0)
-        // Only publish on change so SwiftUI doesn't re-render every second.
-        if h != hh { hh = h }
-        if m != mm { mm = m }
+        let c = Calendar.current.dateComponents([.hour, .minute, .second], from: Date())
+        let next = [c.hour ?? 0, c.minute ?? 0, c.second ?? 0].map { String(format: "%02d", $0) }
+        if next != clock { clock = next }
+    }
+
+    // MARK: Timer display
+
+    /// Timer as ["HH", "MM", "SS"], with the row being typed into showing the typed digits.
+    var timerDigits: [String] {
+        let r = remaining
+        var parts = [r / 3600, (r % 3600) / 60, r % 60].map { String(format: "%02d", $0) }
+        if let f = editing, !buffer.isEmpty {
+            parts[f.rawValue] = String(repeating: "0", count: 2 - buffer.count) + buffer
+        }
+        return parts
     }
 
     // MARK: Timer controls
 
     func toggle() {
+        commitEdit()
         switch phase {
         case .idle:
+            guard remaining > 0 else { return }
             plannedSeconds = remaining
             sessionStart = Date()
             fallthrough
@@ -112,12 +135,62 @@ final class AppState: ObservableObject {
     private func reset() {
         phase = .idle
         endDate = nil
-        remaining = presetMinutes * 60
+        remaining = presetSeconds
     }
 
-    func adjust(by delta: Int) {
+    // MARK: Click-to-type entry
+
+    /// Click on a row: start typing into it. Only while the timer is idle.
+    func beginEdit(_ field: Field) {
+        commitEdit()
         guard phase == .idle else { return }
-        presetMinutes = min(95, max(5, presetMinutes + delta))
+        mode = .timer
+        editing = field
+        buffer = ""
+    }
+
+    func commitEdit() {
+        guard let f = editing else { return }
+        editing = nil
+        defer { buffer = "" }
+        guard let typed = Int(buffer) else { return }
+        var h = presetSeconds / 3600, m = (presetSeconds % 3600) / 60, s = presetSeconds % 60
+        switch f {
+        case .hours: h = min(99, typed)
+        case .minutes: m = min(59, typed)
+        case .seconds: s = min(59, typed)
+        }
+        presetSeconds = h * 3600 + m * 60 + s
+    }
+
+    private func cancelEdit() {
+        editing = nil
+        buffer = ""
+    }
+
+    private func installKeyMonitor() {
+        keyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
+            let code = event.keyCode, chars = event.characters ?? "", flags = event.modifierFlags
+            let consumed = MainActor.assumeIsolated { self?.handleKey(code: code, chars: chars, flags: flags) ?? false }
+            return consumed ? nil : event
+        }
+    }
+
+    /// Returns true if the key was used for timer entry.
+    private func handleKey(code: UInt16, chars: String, flags: NSEvent.ModifierFlags) -> Bool {
+        guard let field = editing, flags.intersection([.command, .control, .option]).isEmpty else { return false }
+        switch code {
+        case 36, 76: commitEdit()                     // return / enter
+        case 53: cancelEdit()                         // escape
+        case 51: buffer = String(buffer.dropLast())   // delete
+        case 48:                                      // tab / shift-tab → next / previous row
+            beginEdit(Field(rawValue: (field.rawValue + (flags.contains(.shift) ? 2 : 1)) % 3)!)
+        default:
+            if chars.count == 1, let c = chars.first, c.isASCII, c.isNumber {
+                buffer = String((buffer + chars).suffix(2))
+            }
+        }
+        return true
     }
 
     // MARK: Window

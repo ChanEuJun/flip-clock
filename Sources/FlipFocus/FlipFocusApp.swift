@@ -9,7 +9,7 @@ struct FlipFocusApp: App {
             ContentView()
                 .environmentObject(state)
                 .environmentObject(state.store)
-                .frame(minWidth: 260, minHeight: 480)
+                .frame(minWidth: 200, minHeight: 220)
                 .preferredColorScheme(.dark)
         }
         .windowStyle(.hiddenTitleBar)
@@ -27,9 +27,11 @@ struct FlipFocusApp: App {
                     .disabled(state.phase == .idle)
                 Divider()
                 Toggle("Keep on Top", isOn: $state.keepOnTop).keyboardShortcut("t", modifiers: [.command, .shift])
-                Button("Snap to Right Quarter") { state.snap(right: true) }
+                Button("Fit Width to Clock") { state.fitWidth() }
+                    .keyboardShortcut("0")
+                Button("Snap to Right Edge") { state.snap(right: true) }
                     .keyboardShortcut(.rightArrow, modifiers: [.command, .option])
-                Button("Snap to Left Quarter") { state.snap(right: false) }
+                Button("Snap to Left Edge") { state.snap(right: false) }
                     .keyboardShortcut(.leftArrow, modifiers: [.command, .option])
             }
         }

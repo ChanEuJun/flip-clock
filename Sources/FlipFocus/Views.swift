@@ -27,44 +27,59 @@ struct ContentView: View {
             .padding(.bottom, 14)
         }
         .onHover { h in withAnimation(.easeOut(duration: 0.2)) { hovering = h } }
+        .onAppear { state.initialLayoutIfNeeded() }
     }
 }
 
-// MARK: - Shared tile grid: HH / MM / SS stacked, filling the window height
+// MARK: - Shared tile grid: HH / MM / SS, stacked vertically or in one row, whichever gives bigger digits
 
 struct TileGrid: View {
+    @EnvironmentObject var state: AppState
     let rows: [String]                 // ["HH", "MM", "SS"]
     var editing: Field? = nil
     var onTap: ((Field) -> Void)? = nil
 
     var body: some View {
         GeometryReader { geo in
-            let gap = max(8, geo.size.width * 0.035)
-            let tileW = max(10, (geo.size.width - gap) / 2)
-            let tileH = max(10, min((geo.size.height - gap * 2) / 3, tileW * 1.7))
-            VStack(spacing: gap) {
-                ForEach(Field.allCases, id: \.self) { f in
-                    row(rows[f.rawValue], field: f, w: tileW, h: tileH, gap: gap)
+            let W = geo.size.width, H = geo.size.height
+            let a = TileMetrics.aspect, g = TileMetrics.pairGap, G = TileMetrics.groupGap
+            // Grid size in units of tile width.
+            let vW = 2 + g, vH = 3 * a + 2 * g
+            let hW = 6 + 3 * g + 2 * G, hH = a
+            let tv = min(W / vW, H / vH), th = min(W / hW, H / hH)
+            let horizontal = th > tv
+            let t = max(4, horizontal ? th : tv)
+            Group {
+                if horizontal {
+                    HStack(spacing: G * t) { pairs(t) }
+                } else {
+                    VStack(spacing: g * t) { pairs(t) }
                 }
             }
-            .frame(width: geo.size.width, height: geo.size.height)
+            .frame(width: W, height: H)
+            // Spare width beyond what the vertical layout needs at this height (negative = digits width-limited).
+            .onChange(of: geo.size, initial: true) { _, size in
+                state.gridWidthSlack = size.width - vW * (size.height / vH)
+            }
         }
     }
 
-    private func row(_ digits: String, field: Field, w: CGFloat, h: CGFloat, gap: CGFloat) -> some View {
-        HStack(spacing: gap) {
-            ForEach(Array(digits.enumerated()), id: \.offset) { _, ch in
-                FlipDigit(String(ch)).frame(width: w, height: h)
+    @ViewBuilder private func pairs(_ t: CGFloat) -> some View {
+        ForEach(Field.allCases, id: \.self) { f in
+            HStack(spacing: TileMetrics.pairGap * t) {
+                ForEach(Array(rows[f.rawValue].enumerated()), id: \.offset) { _, ch in
+                    DigitTile(value: String(ch)).frame(width: t, height: t * TileMetrics.aspect)
+                }
             }
+            .overlay(
+                RoundedRectangle(cornerRadius: t * 0.12, style: .continuous)
+                    .stroke(accent, lineWidth: 2)
+                    .padding(-4)
+                    .opacity(editing == f ? 1 : 0)
+            )
+            .contentShape(Rectangle())
+            .onTapGesture { onTap?(f) }
         }
-        .overlay(
-            RoundedRectangle(cornerRadius: w * 0.12, style: .continuous)
-                .stroke(accent, lineWidth: 2)
-                .padding(-4)
-                .opacity(editing == field ? 1 : 0)
-        )
-        .contentShape(Rectangle())
-        .onTapGesture { onTap?(field) }
     }
 }
 

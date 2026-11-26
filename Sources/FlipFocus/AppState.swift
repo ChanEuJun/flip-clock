@@ -195,38 +195,28 @@ final class AppState: ObservableObject {
 
     // MARK: Window
 
-    /// Set by TileGrid on every resize: window width that could be removed before the digits start shrinking.
-    var gridWidthSlack: CGFloat = 0
+    /// Window width ÷ height, tuned by hand on a 1130pt-tall display (454 × 1130).
+    /// Keeps the same balance of digits to negative space on any monitor.
+    static let windowAspect: CGFloat = 454.0 / 1130.0
 
     private var mainWindow: NSWindow? {
         NSApp.windows.first { $0.isVisible && $0.canBecomeMain } ?? NSApp.windows.first
     }
 
-    /// Shrink/grow the window to the narrowest width at which the vertical clock is still full size.
-    func fitWidth() {
-        guard let w = mainWindow, let screen = w.screen ?? NSScreen.main else { return }
-        var f = w.frame
-        let anchoredRight = abs(f.maxX - screen.visibleFrame.maxX) < 2
-        let newWidth = max(w.minSize.width, (f.width - gridWidthSlack).rounded())
-        if anchoredRight { f.origin.x = f.maxX - newWidth }
-        f.size.width = newWidth
-        w.setFrame(f, display: true, animate: true)
-    }
-
-    /// Full height against one screen edge, then fit the width to the clock.
-    func snap(right: Bool) {
+    /// Full screen height at the default aspect, against the given edge (or whichever edge is nearer).
+    func resetSize(right: Bool? = nil) {
         guard let w = mainWindow, let screen = w.screen ?? NSScreen.main else { return }
         let v = screen.visibleFrame
-        let width = w.frame.width
-        w.setFrame(NSRect(x: right ? v.maxX - width : v.minX, y: v.minY, width: width, height: v.height),
-                   display: true)
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { [weak self] in self?.fitWidth() }
+        let toRight = right ?? (w.frame.midX > v.midX)
+        let width = (v.height * Self.windowAspect).rounded()
+        w.setFrame(NSRect(x: toRight ? v.maxX - width : v.minX, y: v.minY, width: width, height: v.height),
+                   display: true, animate: w.isVisible)
     }
 
-    /// First launch only: snap to the right edge at the ideal width. Later launches restore the saved frame.
-    func initialLayoutIfNeeded() {
-        guard !UserDefaults.standard.bool(forKey: "didInitialLayout") else { return }
-        UserDefaults.standard.set(true, forKey: "didInitialLayout")
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) { [weak self] in self?.snap(right: true) }
+    func snap(right: Bool) { resetSize(right: right) }
+
+    /// Every launch: size to the screen the window opens on.
+    func initialLayout() {
+        DispatchQueue.main.async { [weak self] in self?.resetSize() }
     }
 }

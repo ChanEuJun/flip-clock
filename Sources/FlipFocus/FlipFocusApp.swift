@@ -27,7 +27,7 @@ struct FlipFocusApp: App {
                     .disabled(state.phase == .idle)
                 Divider()
                 Toggle("Keep on Top", isOn: $state.keepOnTop).keyboardShortcut("t", modifiers: [.command, .shift])
-                Button("Fit Width to Clock") { state.fitWidth() }
+                Button("Reset Window Size") { state.resetSize() }
                     .keyboardShortcut("0")
                 Button("Snap to Right Edge") { state.snap(right: true) }
                     .keyboardShortcut(.rightArrow, modifiers: [.command, .option])

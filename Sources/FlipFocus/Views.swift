@@ -27,14 +27,13 @@ struct ContentView: View {
             .padding(.bottom, 14)
         }
         .onHover { h in withAnimation(.easeOut(duration: 0.2)) { hovering = h } }
-        .onAppear { state.initialLayoutIfNeeded() }
+        .onAppear { state.initialLayout() }
     }
 }
 
 // MARK: - Shared tile grid: HH / MM / SS, stacked vertically or in one row, whichever gives bigger digits
 
 struct TileGrid: View {
-    @EnvironmentObject var state: AppState
     let rows: [String]                 // ["HH", "MM", "SS"]
     var editing: Field? = nil
     var onTap: ((Field) -> Void)? = nil
@@ -57,10 +56,6 @@ struct TileGrid: View {
                 }
             }
             .frame(width: W, height: H)
-            // Spare width beyond what the vertical layout needs at this height (negative = digits width-limited).
-            .onChange(of: geo.size, initial: true) { _, size in
-                state.gridWidthSlack = size.width - vW * (size.height / vH)
-            }
         }
     }
 
